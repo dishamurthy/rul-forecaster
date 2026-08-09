@@ -1,0 +1,28 @@
+# Model checkpoints (large files, not needed for reproducibility since code trains them)
+*.pth
+lstm_rul.pth
+cnn_rul.pth
+
+# Jupyter & Python
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Weights & Biases
+wandb/
