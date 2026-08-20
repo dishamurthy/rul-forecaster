@@ -125,7 +125,7 @@ Winner: LSTM
 
 **Multi-condition generalisation.** FD001 is the easy subset — single operating condition, single fault mode. FD002 and FD004 have 6 operating conditions. Running on those and showing the RMSE gap between LSTM and CNN widen would be a stronger result to report.
 
-**Deployment as an inference API.** The model is 128-dim hidden state — lightweight enough to serve as a REST endpoint. FastAPI + uvicorn, serialize the model with `torch.jit.trace`, wrap it in a `/predict` endpoint that takes a 30×15 sequence and returns predicted RUL. Add a WebSocket endpoint and you can stream live predictions as new sensor data arrives — same architecture I used in the RUL dashboard project.
+**Deployment as an inference API.** The model is lightweight enough to serve as a REST endpoint. FastAPI + uvicorn could be used to expose a `/predict` endpoint that takes a 30×15 sequence and returns the predicted RUL. A WebSocket endpoint could also be added to stream predictions from incoming sensor data.
 
 **NASA CMAPSS → real sensor data.** The pipeline is dataset-agnostic. Swap the data loader for any multi-channel time-series (EV battery discharge curves, CNC vibration sensors, bearing temperature logs) and the rest of the code runs unchanged. The RUL labeling and Health Index construction are the only parts that need domain-specific tuning.
 
