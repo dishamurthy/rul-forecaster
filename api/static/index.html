@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RUL Forecaster · NASA C-MAPSS FD001</title>
+<style>
+  :root{
+    --bg:#0a0c0f; --panel:#111418; --panel2:#0e1115; --border:#1e2530;
+    --amber:#f5a623; --cyan:#00d4ff; --green:#22c55e; --red:#ef4444;
+    --muted:#4a5568; --text:#e2e8f0; --sub:#8794a8;
+    --mono:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
+  .wrap{max-width:1360px;margin:0 auto;padding:20px 24px 40px}
+  header{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+  .eyebrow{font:600 11px var(--mono);letter-spacing:.18em;color:var(--amber);margin-bottom:4px}
+  h1{margin:0;font-size:24px;letter-spacing:-.02em}
+  h1 small{font:400 13px var(--sans);color:var(--sub);margin-left:10px;letter-spacing:0}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  select,button{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;
+    padding:8px 11px;font:500 12px var(--mono);cursor:pointer}
+  select:hover,button:hover{border-color:#34405a}
+  button.primary{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
+  button.primary:hover{filter:brightness(1.08)}
+  .pill{display:inline-flex;align-items:center;gap:7px;font:500 11px var(--mono);color:var(--sub);
+    padding:7px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+  .dot.err{background:var(--red)}
+  .banner{display:none;margin-bottom:14px;padding:12px 16px;border-radius:8px;font:13px var(--mono);
+    border:1px solid var(--red);background:#2d0a0a;color:#fca5a5}
+  .banner code{background:#00000055;padding:2px 6px;border-radius:4px;color:#fff}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+  .lbl{font:600 10px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--sub);margin-bottom:8px}
+  .val{font:700 28px var(--mono);letter-spacing:-.02em;line-height:1}
+  .val small{font:400 12px var(--mono);color:var(--sub);margin-left:4px;letter-spacing:0}
+  .note{font:11px var(--mono);color:var(--muted);margin-top:7px}
+  .grid{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,1fr);gap:14px;margin-bottom:14px}
+  @media(max-width:1000px){.grid{grid-template-columns:1fr}}
+  .title{font:600 12px var(--sans);letter-spacing:.05em;color:var(--sub);margin-bottom:10px;display:flex;justify-content:space-between;gap:10px}
+  .title span:last-child{font:11px var(--mono);color:var(--muted)}
+  svg{display:block;width:100%;height:auto}
+  svg text{font-family:var(--mono);fill:var(--sub)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font:11px var(--mono);color:var(--sub);margin-top:6px}
+  .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  .readout .big{font:700 52px var(--mono);letter-spacing:-.03em;line-height:1}
+  .readout .row{display:flex;justify-content:space-between;font:12px var(--mono);color:var(--sub);padding:7px 0;border-bottom:1px solid var(--border)}
+  .readout .row b{color:var(--text);font-weight:600}
+  .badge{display:inline-block;font:700 11px var(--mono);letter-spacing:.08em;padding:5px 10px;border-radius:5px;margin:10px 0 6px}
+  .bar{height:5px;background:var(--border);border-radius:3px;margin-top:12px;overflow:hidden}
+  .bar>div{height:100%;background:var(--cyan);width:0;transition:width .15s}
+  .sensors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  @media(max-width:700px){.sensors{grid-template-columns:repeat(2,1fr)}}
+  .spark{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+  .spark .n{font:11px var(--mono);color:var(--sub);display:flex;justify-content:space-between}
+  .spark .n b{color:var(--text);font-weight:600}
+  table{width:100%;border-collapse:collapse;font:12px var(--mono)}
+  th,td{text-align:right;padding:9px 8px;border-bottom:1px solid var(--border)}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--sub);font-weight:600;font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+  td.best{color:var(--green);font-weight:700}
+  img.eval{width:100%;border-radius:8px;border:1px solid var(--border);background:#fff}
+  footer{margin-top:18px;font:10px var(--mono);color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  .hint{color:var(--muted);font:12px var(--mono);text-align:center;padding:90px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">PREDICTIVE HEALTH MANAGEMENT</div>
+      <h1>RUL Forecaster <small>NASA C-MAPSS FD001 · MC-Dropout uncertainty</small></h1>
+    </div>
+    <div class="controls">
+      <span class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">connecting…</span></span>
+      <select id="archSel" title="Model"></select>
+      <select id="engineSel" title="Test engine"></select>
+      <select id="speedSel" title="Replay speed">
+        <option value="0.30">Slow</option><option value="0.12" selected>Normal</option><option value="0.03">Fast</option>
+      </select>
+      <button class="primary" id="playBtn">▶ Start</button>
+      <button id="resetBtn">⟲ Reset</button>
+      <button id="fullBtn" title="Fetch the entire run at once (REST)">Show full run</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="grid">
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <div class="card">
+        <div class="title"><span>REMAINING USEFUL LIFE — 90% MC-DROPOUT INTERVAL</span><span id="rulMeta"></span></div>
+        <div id="rulChart"></div>
+        <div class="legend">
+          <span><i style="background:var(--amber)"></i>Predicted RUL (mean of MC samples)</span>
+          <span><i style="background:#f5a62344;height:9px"></i>90% interval</span>
+          <span><i style="background:var(--sub)"></i>True RUL</span>
+          <span><i style="background:var(--red)"></i>Maintenance threshold (30)</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="title"><span>SENSOR CHANNELS (raw units)</span><span>sparkline = min-max scaled history</span></div>
+        <div class="sensors" id="sensors"></div>
+      </div>
+      <div class="card">
+        <div class="title"><span>HEALTH INDEX (model input feature)</span><span>mean of scaled sensors</span></div>
+        <div id="hiChart"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <div class="card readout">
+        <div class="lbl">Live readout</div>
+        <div class="big" id="rBig">—</div>
+        <div class="note" style="margin-top:4px">predicted cycles remaining (125 = capped)</div>
+        <div><span class="badge" id="rBadge" style="background:#1e2530;color:var(--sub)">IDLE</span></div>
+        <div class="row"><span>90% interval</span><b id="rCI">—</b></div>
+        <div class="row"><span>± std (MC)</span><b id="rStd">—</b></div>
+        <div class="row"><span>True RUL</span><b id="rTrue">—</b></div>
+        <div class="row"><span>Error (pred − true)</span><b id="rErr">—</b></div>
+        <div class="row"><span>Cycle</span><b id="rCycle">—</b></div>
+        <div class="bar"><div id="rBar"></div></div>
+      </div>
+      <div class="card">
+        <div class="title"><span>FLEET: PREDICTED vs ACTUAL</span><span>100 test engines · click a dot</span></div>
+        <div id="fleet"></div>
+        <div class="note">Final-window prediction per engine (point estimate). Dashed line = perfect.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="title"><span>MODEL EVALUATION (from notebook)</span></div>
+      <img class="eval" src="/assets/eval_results.png" alt="Evaluation results" onerror="this.style.display='none'">
+    </div>
+    <div class="card">
+      <div class="title"><span>MODEL COMPARISON</span><span>computed live from checkpoints</span></div>
+      <div id="cmp"></div>
+      <div class="note" style="margin-top:12px">NASA score is the asymmetric PHM metric (Saxena et al. 2008) — lower is better, late predictions penalised harder. CI coverage = share of test engines whose true RUL falls inside the 90% interval (ideal ≈ 0.90).</div>
+    </div>
+  </div>
+
+  <footer>
+    <span>PyTorch · FastAPI · WebSocket replay · NASA C-MAPSS FD001 · <a href="/docs" style="color:var(--cyan)">API docs</a></span>
+    <span id="foot"></span>
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const C = {amber:'#f5a623',cyan:'#00d4ff',green:'#22c55e',red:'#ef4444',sub:'#8794a8',grid:'#1e2530'};
+const THRESH = 30;
+const NOTEBOOK = {lstm:{rmse:13.95,mae:10.73}, cnn:{rmse:14.82,mae:10.67}};
+const SENSORS = [['s2','LPC temp'],['s4','LPT temp'],['s7','HPC press.'],
+                 ['s11','Static press.'],['s12','Fuel flow'],['s15','Bypass ratio']];
+
+const S = {arch:'lstm', engine:1, interval:0.12, steps:[], init:null, dom:[30,200],
+           ws:null, sock:0, running:false, finished:false, bench:null, status:null, hover:null};
+
+// ── helpers ──────────────────────────────────────────────────────────────────────
+const lin = (d0,d1,r0,r1) => v => r0 + (v-d0)/((d1-d0)||1)*(r1-r0);
+const f1 = v => (v==null||isNaN(v)) ? '—' : Number(v).toFixed(1);
+function showBanner(html){ const b=$('banner'); b.innerHTML=html; b.style.display=html?'block':'none'; }
+
+// ── RUL chart ────────────────────────────────────────────────────────────────────
+function renderRul(){
+  const W=900,H=310,ml=46,mr=14,mt=12,mb=40;
+  const [c0,c1]=S.dom, x=lin(c0,c1,ml,W-mr), y=lin(0,130,H-mb,mt);
+  let s=`<svg viewBox="0 0 ${W} ${H}" id="rulSvg">`;
+  for(const t of [0,25,50,75,100,125]) s+=`<line x1="${ml}" x2="${W-mr}" y1="${y(t)}" y2="${y(t)}" stroke="${C.grid}" stroke-dasharray="3 4"/><text x="${ml-8}" y="${y(t)+4}" font-size="10" text-anchor="end">${t}</text>`;
+  const step=Math.max(10,Math.ceil((c1-c0)/8/10)*10);
+  for(let t=Math.ceil(c0/step)*step;t<=c1;t+=step) s+=`<text x="${x(t)}" y="${H-mb+16}" font-size="10" text-anchor="middle">${t}</text>`;
+  s+=`<line x1="${ml}" x2="${W-mr}" y1="${y(THRESH)}" y2="${y(THRESH)}" stroke="${C.red}" stroke-dasharray="5 4" opacity=".8"/>`;
+  const d=S.steps;
+  if(d.length){
+    const up=d.map(p=>`${x(p.cycle)},${y(p.ci_hi)}`), dn=d.map(p=>`${x(p.cycle)},${y(p.ci_lo)}`).reverse();
+    s+=`<polygon points="${up.concat(dn).join(' ')}" fill="${C.amber}" opacity=".2"/>`;
+    s+=`<polyline fill="none" stroke="${C.sub}" stroke-width="1.6" stroke-dasharray="5 4" points="${d.map(p=>`${x(p.cycle)},${y(p.true_rul)}`).join(' ')}"/>`;
+    s+=`<polyline fill="none" stroke="${C.amber}" stroke-width="2.6" stroke-linejoin="round" points="${d.map(p=>`${x(p.cycle)},${y(p.rul_mean)}`).join(' ')}"/>`;
+    const L=d[d.length-1]; s+=`<circle cx="${x(L.cycle)}" cy="${y(L.rul_mean)}" r="4.5" fill="${C.amber}"/>`;
+    if(S.hover!=null && d[S.hover]){
+      const p=d[S.hover], px=x(p.cycle), left=px>W*0.65;
+      s+=`<line x1="${px}" x2="${px}" y1="${mt}" y2="${H-mb}" stroke="#ffffff55"/>`;
+      const bx=left?px-182:px+10;
+      s+=`<rect x="${bx}" y="${mt+4}" width="172" height="76" rx="6" fill="#0a0c0f" stroke="${C.grid}"/>`;
+      [['cycle '+p.cycle,'#e2e8f0'],['pred  '+f1(p.rul_mean)+'  ±'+f1(p.rul_std),C.amber],
+       ['90%   '+f1(p.ci_lo)+' – '+f1(p.ci_hi),C.amber],['true  '+f1(p.true_rul),C.sub]]
+       .forEach((r,i)=>s+=`<text x="${bx+10}" y="${mt+22+i*16}" font-size="11" style="fill:${r[1]}">${r[0]}</text>`);
+    }
+  }
+  s+=`<text x="${(ml+W-mr)/2}" y="${H-4}" font-size="10" text-anchor="middle">operational cycle</text></svg>`;
+  $('rulChart').innerHTML=s;
+  const svg=$('rulSvg');
+  svg.addEventListener('mousemove',e=>{
+    if(!S.steps.length) return;
+    const r=svg.getBoundingClientRect(), px=(e.clientX-r.left)/r.width*W;
+    const cyc=c0+(px-ml)/(W-mr-ml)*(c1-c0);
+    let best=0,bd=1e9; S.steps.forEach((p,i)=>{const dd=Math.abs(p.cycle-cyc); if(dd<bd){bd=dd;best=i;}});
+    if(S.hover!==best){S.hover=best; renderRul();}
+  });
+  svg.addEventListener('mouseleave',()=>{S.hover=null; renderRul();});
+}
+
+// ── Health index chart ──────────────────────────────────────────────────────────
+function renderHI(){
+  const W=900,H=140,ml=46,mr=14,mt=8,mb=20, d=S.steps;
+  if(!d.length){ $('hiChart').innerHTML='<div class="hint" style="padding:40px 0">Awaiting data…</div>'; return; }
+  const vals=d.map(p=>p.health_index), lo=Math.min(...vals), hi=Math.max(...vals), pad=(hi-lo)*0.15||0.05;
+  const x=lin(S.dom[0],S.dom[1],ml,W-mr), y=lin(lo-pad,hi+pad,H-mb,mt);
+  let s=`<svg viewBox="0 0 ${W} ${H}">`;
+  for(let i=0;i<=3;i++){const v=lo-pad+(hi-lo+2*pad)*i/3; s+=`<line x1="${ml}" x2="${W-mr}" y1="${y(v)}" y2="${y(v)}" stroke="${C.grid}" stroke-dasharray="3 4"/><text x="${ml-8}" y="${y(v)+4}" font-size="10" text-anchor="end">${v.toFixed(2)}</text>`;}
+  const pts=d.map(p=>`${x(p.cycle)},${y(p.health_index)}`);
+  s+=`<polygon points="${x(d[0].cycle)},${H-mb} ${pts.join(' ')} ${x(d[d.length-1].cycle)},${H-mb}" fill="${C.cyan}" opacity=".12"/>`;
+  s+=`<polyline fill="none" stroke="${C.cyan}" stroke-width="2" points="${pts.join(' ')}"/></svg>`;
+  $('hiChart').innerHTML=s;
+}
+
+// ── Sensor sparklines ───────────────────────────────────────────────────────────
+function renderSensors(){
+  const d=S.steps, last=d[d.length-1];
+  $('sensors').innerHTML=SENSORS.map(([k,name])=>{
+    let line='';
+    if(d.length>1){
+      const v=d.map(p=>p.sensors[k].norm), lo=Math.min(...v), hi=Math.max(...v);
+      const x=lin(S.dom[0],S.dom[1],2,198), y=lin(lo,hi===lo?lo+1:hi,38,4);
+      line=`<polyline fill="none" stroke="${C.cyan}" stroke-width="1.6" points="${d.map(p=>`${x(p.cycle)},${y(p.sensors[k].norm)}`).join(' ')}"/>`;
+    }
+    return `<div class="spark"><div class="n"><span>${k} · ${name}</span><b>${last?(+last.sensors[k].raw).toFixed(2):'—'}</b></div><svg viewBox="0 0 200 42">${line}</svg></div>`;
+  }).join('');
+}
+
+// ── Live readout ────────────────────────────────────────────────────────────────
+function renderReadout(){
+  const d=S.steps, p=d[d.length-1];
+  if(!p){ ['rBig','rCI','rStd','rTrue','rErr','rCycle'].forEach(i=>$(i).textContent='—'); $('rBar').style.width='0'; return setBadge('IDLE','#1e2530',C.sub); }
+  $('rBig').textContent=f1(p.rul_mean);
+  $('rBig').style.color = p.rul_mean<=THRESH?C.red : p.rul_mean<=50?C.amber : C.green;
+  $('rCI').textContent=`${f1(p.ci_lo)} – ${f1(p.ci_hi)}`;
+  $('rStd').textContent='± '+f1(p.rul_std);
+  $('rTrue').textContent=f1(p.true_rul);
+  const e=p.rul_mean-p.true_rul; $('rErr').textContent=(e>0?'+':'')+f1(e); $('rErr').style.color=e>0?C.red:C.green;
+  $('rCycle').textContent=`${p.cycle} / ${S.dom[1]}`;
+  $('rBar').style.width=((p.cycle-S.dom[0])/((S.dom[1]-S.dom[0])||1)*100)+'%';
+  if(p.rul_mean<=THRESH) setBadge('MAINTENANCE DUE','#2d0a0a',C.red);
+  else if(p.rul_mean<=50) setBadge('WATCH','#2d1f05',C.amber);
+  else setBadge('NOMINAL','#06260f',C.green);
+}
+function setBadge(t,bg,fg){const b=$('rBadge'); b.textContent=t; b.style.background=bg; b.style.color=fg;}
+
+function renderAll(){
+  renderRul(); renderHI(); renderSensors(); renderReadout();
+  $('rulMeta').textContent=`Engine ${S.engine} · ${S.arch==='lstm'?'LSTM+Attn':'1D-CNN'}`;
+}
+
+// ── Fleet scatter ───────────────────────────────────────────────────────────────
+function renderFleet(){
+  if(!S.bench) return;
+  const fl=S.bench.fleet[S.arch]||[], W=320,H=320,m=34, x=lin(0,130,m,W-10), y=lin(0,130,H-m,10);
+  let s=`<svg viewBox="0 0 ${W} ${H}">`;
+  for(const t of [0,25,50,75,100,125]) s+=`<line x1="${m}" x2="${W-10}" y1="${y(t)}" y2="${y(t)}" stroke="${C.grid}" stroke-dasharray="3 4"/><text x="${m-6}" y="${y(t)+4}" font-size="9" text-anchor="end">${t}</text><text x="${x(t)}" y="${H-m+14}" font-size="9" text-anchor="middle">${t}</text>`;
+  s+=`<line x1="${x(0)}" y1="${y(0)}" x2="${x(130)}" y2="${y(130)}" stroke="${C.red}" stroke-dasharray="5 4"/>`;
+  fl.forEach(e=>{
+    const sel=e.engine===S.engine, px=x(e.true_rul), py=y(Math.max(0,Math.min(130,e.pred_rul)));
+    s+=`<circle data-e="${e.engine}" cx="${px}" cy="${py}" r="${sel?6:4}" fill="${sel?C.amber:C.cyan}" fill-opacity="${sel?1:.6}" stroke="${sel?'#fff':'none'}" style="cursor:pointer"><title>Engine ${e.engine}: true ${e.true_rul}, pred ${e.pred_rul}</title></circle>`;
+  });
+  s+=`<text x="${(m+W)/2}" y="${H-4}" font-size="10" text-anchor="middle">actual RUL</text><text transform="translate(10 ${H/2}) rotate(-90)" font-size="10" text-anchor="middle">predicted RUL</text></svg>`;
+  $('fleet').innerHTML=s;
+  $('fleet').querySelectorAll('circle').forEach(c=>c.onclick=()=>{ $('engineSel').value=c.dataset.e; onEngine(); });
+}
+
+// ── KPIs + comparison ───────────────────────────────────────────────────────────
+function renderKpis(){
+  const b=S.bench, m=b&&b.models[S.arch];
+  if(!m){ $('kpis').innerHTML=`<div class="card"><div class="lbl">Benchmark</div><div class="val" style="font-size:16px;color:var(--sub)">computing…</div></div>`; return; }
+  const nb=NOTEBOOK[S.arch]||{};
+  const k=(l,v,u,col,note)=>`<div class="card"><div class="lbl">${l}</div><div class="val" style="color:${col}">${v}<small>${u}</small></div><div class="note">${note}</div></div>`;
+  $('kpis').innerHTML =
+    k('RMSE',m.rmse,'cycles',C.green,`notebook-reported: ${nb.rmse??'—'}`) +
+    k('MAE',m.mae,'cycles',C.green,`notebook-reported: ${nb.mae??'—'}`) +
+    k('NASA score',m.nasa_score,'',C.amber,'lower is better') +
+    k('90% CI coverage',(m.ci90_coverage*100).toFixed(0)+'%','',C.cyan,'target ≈ 90%') +
+    k('Parameters',m.n_params.toLocaleString(),'',C.cyan,m.name);
+  const rows=Object.entries(b.models), best=Math.min(...rows.map(r=>r[1].rmse));
+  $('cmp').innerHTML=`<table><tr><th>Model</th><th>RMSE</th><th>MAE</th><th>NASA</th><th>CI cov.</th></tr>`+
+    rows.map(([a,v])=>`<tr><td>${v.name}</td><td class="${v.rmse===best?'best':''}">${v.rmse}</td><td>${v.mae}</td><td>${v.nasa_score}</td><td>${(v.ci90_coverage*100).toFixed(0)}%</td></tr>`).join('')+`</table>`;
+}
+
+// ── Replay (WebSocket) ──────────────────────────────────────────────────────────
+function closeSocket(){ S.sock++; if(S.ws){ try{S.ws.close();}catch(e){} S.ws=null; } }
+function setPlaying(on){ S.running=on; $('playBtn').textContent=on?'❚❚ Pause':(S.finished?'▶ Replay':'▶ Start'); $('playBtn').classList.toggle('primary',!on); }
+
+function openSocket(resume){
+  closeSocket();
+  const my=S.sock, proto=location.protocol==='https:'?'wss':'ws';
+  let url=`${proto}://${location.host}/ws/replay/${S.engine}?arch=${S.arch}&interval=${S.interval}`;
+  if(resume && S.steps.length) url+=`&start=${S.steps[S.steps.length-1].cycle+1}`;
+  const ws=new WebSocket(url); S.ws=ws; S.finished=false; setPlaying(true);
+  ws.onmessage=ev=>{
+    if(my!==S.sock) return; const m=JSON.parse(ev.data);
+    if(m.type==='init'){ S.init=m; S.dom=[m.first_cycle,m.last_cycle]; }
+    else if(m.type==='step'){ S.steps.push(m); renderAll(); }
+    else if(m.type==='done'){ S.finished=true; setPlaying(false); }
+    else if(m.type==='error'){ setPlaying(false); showBanner(`<b>${m.code}</b> — ${m.message}`); }
+  };
+  ws.onerror=()=>{ if(my===S.sock){ setPlaying(false); showBanner('WebSocket connection failed — is the server running?'); } };
+  ws.onclose=()=>{ if(my===S.sock && S.running){ setPlaying(false); } };
+}
+function resetRun(){ closeSocket(); S.steps=[]; S.init=null; S.finished=false; S.hover=null; setPlaying(false); setDomain(); renderAll(); renderFleet(); }
+function setDomain(){
+  const e=S.bench && (S.bench.fleet[S.arch]||[]).find(r=>r.engine===S.engine);
+  S.dom=[30, e?e.cycles:200];
+}
+async function showFull(){
+  closeSocket(); setPlaying(false);
+  try{
+    const r=await fetch(`/api/engine/${S.engine}?arch=${S.arch}`); const j=await r.json();
+    if(!r.ok) throw new Error(j.message||r.statusText);
+    S.steps=j.steps; S.dom=[j.steps[0].cycle, j.steps[j.steps.length-1].cycle]; S.finished=true; setPlaying(false); renderAll();
+  }catch(e){ showBanner('Could not load run: '+e.message); }
+}
+
+// ── UI events ───────────────────────────────────────────────────────────────────
+function onEngine(){ S.engine=+$('engineSel').value; resetRun(); openSocket(false); }
+function populateEngines(){
+  const fl=(S.bench&&S.bench.fleet[S.arch])||[];
+  $('engineSel').innerHTML=fl.map(e=>`<option value="${e.engine}">Engine ${e.engine} · ${e.cycles} cycles</option>`).join('');
+  $('engineSel').value=S.engine;
+}
+$('archSel').onchange=()=>{ S.arch=$('archSel').value; renderKpis(); populateEngines(); resetRun(); openSocket(false); };
+$('engineSel').onchange=onEngine;
+$('speedSel').onchange=()=>{ S.interval=+$('speedSel').value; if(S.running) openSocket(true); };
+$('playBtn').onclick=()=>{
+  if(S.running){ closeSocket(); setPlaying(false); }
+  else if(S.finished){ resetRun(); openSocket(false); }
+  else openSocket(true);
+};
+$('resetBtn').onclick=resetRun;
+$('fullBtn').onclick=showFull;
+
+// ── Boot ────────────────────────────────────────────────────────────────────────
+(async function boot(){
+  try{
+    const st=await (await fetch('/api/status')).json(); S.status=st;
+    $('statusDot').className='dot on';
+    $('statusTxt').textContent=`API online · ${st.device.toUpperCase()} · MC×${st.mc_samples}`;
+    $('foot').textContent=`torch ${st.torch}`;
+    const avail=Object.keys(st.models).filter(a=>st.checkpoints[a]);
+    $('archSel').innerHTML=Object.entries(st.models).map(([a,n])=>`<option value="${a}" ${st.checkpoints[a]?'':'disabled'}>${n}${st.checkpoints[a]?'':' (missing)'}</option>`).join('');
+    if(!st.data_ready){
+      showBanner(`<b>Dataset not found.</b> Missing in <code>data/raw/</code>: ${st.data_missing.join(', ')}.<br>Run <code>python scripts/download_data.py</code> then refresh.`);
+      renderAll(); renderKpis(); return;
+    }
+    if(!avail.length){ showBanner('No checkpoints found in <code>checkpoints/</code> (lstm_rul.pth, cnn_rul.pth).'); renderAll(); return; }
+    S.arch=avail[0]; $('archSel').value=S.arch;
+    renderAll(); renderKpis();
+    const r=await fetch('/api/benchmark'); const j=await r.json();
+    if(!r.ok){ showBanner(`<b>${j.code||'ERROR'}</b> — ${j.message||'benchmark failed'}`); return; }
+    S.bench=j; populateEngines(); renderKpis(); setDomain(); renderAll(); renderFleet();
+    openSocket(false);
+  }catch(e){
+    $('statusDot').className='dot err'; $('statusTxt').textContent='API offline';
+    showBanner('Cannot reach the API. Start it with <code>uvicorn api.server:app --reload</code>.');
+    renderAll(); renderKpis();
+  }
+})();
+</script>
+</body>
+</html>

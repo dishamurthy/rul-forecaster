@@ -1,28 +1,19 @@
-# Model checkpoints (large files, not needed for reproducibility since code trains them)
-*.pth
-lstm_rul.pth
-cnn_rul.pth
+# Dataset (re-download with scripts/download_data.py)
+data/raw/*.txt
 
-# Jupyter & Python
-.ipynb_checkpoints/
+# Python
 __pycache__/
 *.pyc
-*.pyo
 .pytest_cache/
-
-# Virtual environments
-venv/
-env/
+.ipynb_checkpoints/
 .venv/
+venv/
 
-# OS files
+# OS / IDE
 .DS_Store
-Thumbs.db
-
-# IDEs
-.vscode/
+.vscode/*
+!.vscode/launch.json
 .idea/
-*.swp
 
 # Weights & Biases
 wandb/
