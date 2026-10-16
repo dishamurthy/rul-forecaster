@@ -3,9 +3,8 @@
 
 Predicts how many operational cycles a jet engine has left before failure from the last 30 cycles of sensor data, and serves the models through a **FastAPI backend with a live dashboard** (WebSocket replay, Monte-Carlo-Dropout uncertainty bands, fleet-level evaluation).
 
-<!-- Add your screenshots here after running the dashboard (see "Taking screenshots" below)
-![Dashboard](assets/screenshots/dashboard_main.png)
--->
+![Dashboard overview — live RUL prediction with 90% MC-Dropout interval](assets/screenshots/dashboard_overview.png)
+![Dashboard evaluation — fleet scatter, sensors and model comparison](assets/screenshots/dashboard_evaluation.png)
 
 ---
 
@@ -70,24 +69,23 @@ It checks the API, loads both checkpoints, and confirms the live metrics match t
 ### Troubleshooting
 | Symptom | Fix |
 |---|---|
-| Banner: *Dataset not found* | `python scripts/download_data.py` (or drop `train/test/RUL_FD001.txt` into `data/raw/`) |
+| Banner: *Dataset not found* | `python scripts/download_data.py` — if it fails, download `CMAPSSData.zip` from [NASA](https://data.nasa.gov/dataset/cmapss-jet-engine-simulated-data) (or Kaggle), unzip, and copy `train_FD001.txt`, `test_FD001.txt`, `RUL_FD001.txt` into `data/raw/` |
+| `CERTIFICATE_VERIFY_FAILED` on macOS | `pip install certifi` and re-run the download script |
 | `ModuleNotFoundError: api` | Run `uvicorn` from the project root, not from inside `api/` |
 | Banner: *Cannot reach the API* | Server isn't running — step 6 |
 | Slow first load | First request computes the benchmark for both models (a few seconds on CPU); results are cached |
 | `pip install torch` is slow/huge | CPU-only build: `pip install torch --index-url https://download.pytorch.org/whl/cpu` |
 
-### Taking screenshots for this README
-With the server running at 1440 px wide or larger:
-1. **`dashboard_main.png`** — pick an engine, click **Show full run**, hover the RUL chart so the tooltip shows. Capture the whole page.
-2. **`dashboard_live.png`** — mid-replay (speed *Normal*), showing the interval band growing.
-3. **`fleet_comparison.png`** — the fleet scatter + model comparison table, switching between LSTM and CNN.
-4. **`api_docs.png`** — `http://127.0.0.1:8000/docs` (proves the FastAPI layer).
-
-Save into `assets/screenshots/` and uncomment the image line at the top of this README.
+### Screenshots used in this README
+Saved in `assets/screenshots/` (three images):
+1. **`dashboard_overview.png`** — KPI row, RUL chart with the 90 % interval, live readout and sensor channels (use an engine with 150+ cycles and click **Show full run**).
+2. **`dashboard_evaluation.png`** — fleet scatter (predicted vs actual), health index and the LSTM-vs-CNN comparison table.
+3. **`api_docs.png`** — the auto-generated FastAPI Swagger page at `/docs`.
 
 ---
 
 ## API
+
 ![FastAPI interactive docs](assets/screenshots/api_docs.png)
 
 | Method | Endpoint | Description |
@@ -143,13 +141,15 @@ The authoritative model definitions are in [`api/nets.py`](api/nets.py) (identic
 
 ## Results (C-MAPSS FD001, 100 test engines)
 
-| Model | RMSE (cycles) | MAE (cycles) |
-|---|---|---|
-| LSTM + Attention | **13.95** | 10.73 |
-| 1D-CNN | 14.82 | 10.67 |
-| Literature baseline (LSTM) | 12–18 | — |
+| Model | RMSE (cycles) | MAE (cycles) | NASA score ↓ | 90 % CI coverage |
+|---|---|---|---|---|
+| LSTM + Attention | **13.95** | 10.73 | 424.9 | 63 % |
+| 1D-CNN | 14.82 | 10.67 | 429.5 | 66 % |
+| Literature baseline (LSTM) | 12–18 | — | — | — |
 
-The dashboard recomputes these live from the checkpoints (plus NASA score and CI coverage) — `scripts/smoke_test.py` asserts they match.
+RMSE / MAE match the notebook; the dashboard recomputes all columns live from the saved checkpoints (`scripts/smoke_test.py` asserts the RMSE match). The two models are close: the LSTM is slightly more accurate by RMSE, the CNN is marginally better on MAE and trains faster.
+
+**Uncertainty:** the 90 % MC-Dropout intervals contain the true RUL for only 63–66 % of test engines, so they are **overconfident** (too narrow) and not yet calibrated.
 
 ![Evaluation Results](assets/eval_results.png)
 
@@ -166,6 +166,7 @@ The dashboard recomputes these live from the checkpoints (plus NASA score and CI
 - **Checkpoint selection used the test set.** The notebook keeps the epoch with the lowest *test* RMSE, so 13.95 is an optimistic, best-epoch figure rather than a held-out estimate. A clean protocol would select on a validation split of the training engines (split by engine, not by row) and report the test set once.
 - **Hence the LSTM's late-epoch RMSE is ~20,** not 13.95. The saved LSTM checkpoint is the early best epoch.
 - **Health-index mismatch.** In training the HI uses correlation weights; at test time (no RUL column) the notebook falls back to an unweighted sensor mean. The dashboard reproduces this so the reported numbers are reproducible, but it is a train/test inconsistency worth fixing.
+- **MC-Dropout intervals are under-dispersed.** Measured coverage is 63 % (LSTM) / 66 % (CNN) against the 90 % target; the bands show relative uncertainty but should not be read as calibrated probabilities.
 - **FD001 only** — one operating condition and one fault mode; the easiest subset.
 - **Dashboard replays held-out test engines** (data on disk streamed at a fixed pace); it is not connected to a live sensor feed.
 
@@ -216,5 +217,5 @@ PyTorch (LSTM, TransformerEncoder, Conv1d) · FastAPI + Uvicorn (REST, WebSocket
 - Select checkpoints on a validation split and re-report the metrics
 - Fix the train/test health-index inconsistency
 - Extend to FD002 / FD004 (six operating conditions) — where the LSTM-vs-CNN gap should widen
-- Calibrate the MC-Dropout intervals (check coverage against the 90 % target)
+- Calibrate the MC-Dropout intervals (measured coverage is 63–66 % vs the 90 % target — e.g. conformal calibration on a validation split)
 - Replace the file replay with a real streaming source
